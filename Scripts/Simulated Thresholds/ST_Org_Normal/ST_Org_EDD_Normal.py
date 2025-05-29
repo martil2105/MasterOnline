@@ -132,14 +132,17 @@ for p_idx in range(len(percentiles_nn)):
         detections_count_nn[p_idx] += delay_count_nn
         fp_nn[p_idx] += fps_nn
         fn_nn[p_idx] += fns_nn
+        # cusum
         detection_delay_cusum[p_idx] += delay_cusum
         detections_count_cusum[p_idx] += delay_count_cusum
         fp_cusum[p_idx] += fps_cusum
         fn_cusum[p_idx] += fns_cusum
+        # logit cusum
         detection_delay_logit_cusum[p_idx] += delay_logit_cusum
         detections_count_logit_cusum[p_idx] += delay_count_logit_cusum
         fp_logit_cusum[p_idx] += fps_logit_cusum
         fn_logit_cusum[p_idx] += fns_logit_cusum
+        
     detection_delay_nn[p_idx] /= detections_count_nn[p_idx]
     detection_delay_cusum[p_idx] /= detections_count_cusum[p_idx]
     detection_delay_logit_cusum[p_idx] /= detections_count_logit_cusum[p_idx]

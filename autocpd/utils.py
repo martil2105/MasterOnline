@@ -332,8 +332,8 @@ def find_detection_delay(stream_length,change_point, detection_time):
         detection_delay = detection_time - change_point
         delay_count = 1
     if detection_time > 0 and detection_time < change_point:
-        detection_delay = stream_length
-        delay_count = 1
+        detection_delay = 0
+        delay_count = 0
         fp = 1
     if detection_time == 0 and change_point > 0:
         detection_delay = stream_length

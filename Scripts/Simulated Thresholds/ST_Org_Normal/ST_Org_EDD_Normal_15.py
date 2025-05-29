@@ -19,13 +19,14 @@ from sklearn.utils import shuffle
 # Parameters
 window_length = 15
 num_repeats = 1000
-stream_length = 2000
+stream_length = 500    
+stream_length_null = 35000
 sigma = 1
 seed = 2023
 epsilon = 0.05
 B_val = np.sqrt(8 * np.log(window_length / epsilon) / window_length)
 mu_L = 0
-tau_bound = 2
+tau_bound = 15
 B_bound = np.array([0.25, 1.75])
 rhos = 0
 thresholds = [99999]
