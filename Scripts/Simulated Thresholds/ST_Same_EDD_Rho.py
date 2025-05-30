@@ -63,7 +63,7 @@ false_alarm_rates = [0.8,0.85, 0.90,0.95,0.99]
 output_dir = Path("datasets")
 threshold_filepath = output_dir / "normal_thresholds_rho_100.npz"
 loaded_thresholds = np.load(threshold_filepath)
-percentiles_nn = loaded_thresholds["percentiles"]
+percentiles_nn = loaded_thresholds["percentiles_nn"]
 percentiles_cusum = loaded_thresholds["percentiles_cusum"]
 percentiles_logit_cusum = loaded_thresholds["percentiles_logit_cusum"]
 # Estimate ARL (Average Run Length)

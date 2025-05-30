@@ -78,7 +78,7 @@ false_alarm_rates = [0.8,0.85, 0.90,0.95,0.99]
 output_dir = Path("datasets")
 threshold_filepath = output_dir / "normal_thresholds_rho_100.npz"
 loaded_thresholds = np.load(threshold_filepath)
-percentiles_nn = loaded_thresholds["percentiles"]
+percentiles_nn = loaded_thresholds["percentiles_nn"]
 percentiles_cusum = loaded_thresholds["percentiles_cusum"]
 percentiles_logit_cusum = loaded_thresholds["percentiles_logit_cusum"]
 # Estimate ARL (Average Run Length)
@@ -163,7 +163,8 @@ for p_idx in range(len(percentiles_nn)):
     detection_delay_cusum[p_idx] /= detections_count_cusum[p_idx]
     detection_delay_logit_cusum[p_idx] /= detections_count_logit_cusum[p_idx]
 
-
+end_time = time()
+print(f"Time taken: {end_time - begin_time} seconds")
 plt.figure(figsize=(10, 8))
 # Plot 1: Average Detection Delay
 plt.subplot(2, 2, 1)
