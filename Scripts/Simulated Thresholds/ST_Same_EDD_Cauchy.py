@@ -18,9 +18,9 @@ from sklearn.utils import shuffle
 
 # Parameters
 window_length = 100
-num_repeats = 1000
+num_repeats = 3000
 stream_length = 500
-stream_length_null = 50000
+stream_length_null = 500
 sigma = 1
 seed = 2023
 epsilon = 0.05
@@ -42,19 +42,6 @@ model = tf.keras.models.load_model(model_path) #modellen
 np.random.seed(seed)
 tf.random.set_seed(seed)
 
-# Batched version of detection function
-def detect_change_in_stream_loc_batched(stream, model, window_length, threshold):
-    num_windows = len(stream) - window_length + 1 #antall vinduer
-    windows = np.array([stream[i:i+window_length] for i in range(num_windows)]) #har alle vinduene i en array for raskere inferens, men dette er akkurat det samme som en while loop
-    windows = np.expand_dims(windows, axis=-1)  #slik at det passer NN
-    logits = model.predict(windows, verbose=0) #finner en prediction for hvert av vinduene
-    probs = tf.nn.softmax(logits, axis=1).numpy()[:, 1] #sannynlighet for at det finnes et changepoint i vinduet
-    detection_idx = np.argmax(probs > threshold) #finner den første changepointen, hvis det ikke er noen over threshold returneres 0
-    if probs[detection_idx] > threshold: #hvis sannsynligheten er større enn threshold
-        detection_time = detection_idx + window_length #changepoint er siste punkt i vinduet
-    else:
-        detection_time = 0 #returnerer 0
-    return detection_time, np.max(probs) #detection tid og den største sannsynlighete for alle vinduene
 
 result_alt =  DataGenAlternative( #data med changepoint og autokorrelasjon
                 N_sub=num_repeats,
@@ -73,24 +60,27 @@ true_tau_alt = result_alt["tau_alt"] #changepointene
 # Generate null data and compute threshold percentile
 false_alarm_rates = [0.8,0.85, 0.90,0.95,0.99]
 output_dir = Path("datasets")
-threshold_filepath = output_dir / "normal_thresholds_cauchy_100.npz"
+threshold_filepath = output_dir / "cauchy_thresholds_100.npz"
 loaded_thresholds = np.load(threshold_filepath)
-percentiles_nn = loaded_thresholds["percentiles"]
+percentiles_nn = loaded_thresholds["percentiles_nn"]
 percentiles_cusum = loaded_thresholds["percentiles_cusum"]
-percentiles_logit_cusum = loaded_thresholds["percentiles_logit_cusum"]
+percentiles_logit = loaded_thresholds["percentiles_logit"]
+percentiles_smart_cusum = loaded_thresholds["percentiles_smart_cusum"]
 
 # Estimate ARL (Average Run Length)
 arl_nn = np.zeros((len(percentiles_nn),num_repeats)) #array for å finne ARL for ulike percentiler
 arl_cusum = np.zeros((len(percentiles_cusum),num_repeats))
-arl_logit_cusum = np.zeros((len(percentiles_logit_cusum),num_repeats))
+arl_logit = np.zeros((len(percentiles_logit),num_repeats))
+arl_smart_cusum = np.zeros((len(percentiles_smart_cusum),num_repeats))
 data = GenDataMeanARH(num_repeats, stream_length_null, cp=None, mu=(mu_L, mu_L), coef=rhos, scale=scale) #generer null data
 num_streams = data.shape[0] #antall serier = repeats
 
 for idx in range(len(percentiles_nn)): #looper gjennom alle percentilene
     current_threshold_nn = percentiles_nn[idx]
     current_threshold_cusum = percentiles_cusum[idx]
-    current_threshold_logit_cusum = percentiles_logit_cusum[idx]
-    print(f"idx: {idx} current_threshold_nn: {current_threshold_nn} current_threshold_cusum: {current_threshold_cusum} current_threshold_logit_cusum: {current_threshold_logit_cusum}")
+    current_threshold_logit = percentiles_logit[idx]
+    current_threshold_smart_cusum = percentiles_smart_cusum[idx]
+    print(f"idx: {idx} current_threshold_nn: {current_threshold_nn} current_threshold_cusum: {current_threshold_cusum} current_threshold_logit: {current_threshold_logit} current_threshold_smart_cusum: {current_threshold_smart_cusum}")
     for i in range(num_repeats):
         dt, _ = detect_change_in_stream_loc_batched(data[i], model, window_length, current_threshold_nn) #finner detection tid
         if dt > 0: #hvis det er en detection, så er det feil
@@ -102,89 +92,112 @@ for idx in range(len(percentiles_nn)): #looper gjennom alle percentilene
             arl_cusum[idx,i] = dt_cusum
         else:
             arl_cusum[idx,i] = stream_length_null
-        dt_logit_cusum, _ = detect_change_in_stream_batched_cusum(data[i], model, window_length, current_threshold_logit_cusum)
-        if dt_logit_cusum > 0:
-            arl_logit_cusum[idx,i] = dt_logit_cusum
+        dt_logit, _ = detect_change_in_stream_batched_cusum(data[i], model, window_length, current_threshold_logit)
+        if dt_logit > 0:
+            arl_logit[idx,i] = dt_logit
         else:
-            arl_logit_cusum[idx,i] = stream_length_null
-
+            arl_logit[idx,i] = stream_length_null
+        dt_smart_cusum, _ = smart_li_cusum(data[i], window_length, current_threshold_smart_cusum)
+        if dt_smart_cusum > 0:
+            arl_smart_cusum[idx,i] = dt_smart_cusum
+        else:
+            arl_smart_cusum[idx,i] = stream_length_null
 arl_cusum = np.mean(arl_cusum,axis=1) #finner gjennomsnittet av arl hver percentil
 arl_nn = np.mean(arl_nn,axis=1)
-arl_logit_cusum= np.mean(arl_logit_cusum,axis=1)
+arl_logit= np.mean(arl_logit,axis=1)
+arl_smart_cusum = np.mean(arl_smart_cusum,axis=1)
 print(arl_nn)
 print(arl_cusum)
-print(arl_logit_cusum)
+print(arl_logit) 
+print(arl_smart_cusum)
 
 
 detection_delay_nn = np.zeros((len(percentiles_nn),num_repeats))
 detection_delay_cusum= np.zeros((len(percentiles_cusum),num_repeats))
-detection_delay_logit_cusum = np.zeros((len(percentiles_logit_cusum),num_repeats))
+detection_delay_logit = np.zeros((len(percentiles_logit),num_repeats))
+detection_delay_smart_cusum = np.zeros((len(percentiles_smart_cusum),num_repeats))
 fp_cusum = np.zeros(len(percentiles_cusum))
 fn_cusum = np.zeros(len(percentiles_cusum))
 fp_nn = np.zeros(len(percentiles_nn))
 fn_nn = np.zeros(len(percentiles_nn))
-fp_logit_cusum = np.zeros(len(percentiles_logit_cusum))
-fn_logit_cusum = np.zeros(len(percentiles_logit_cusum))
+fp_logit = np.zeros(len(percentiles_logit))
+fn_logit = np.zeros(len(percentiles_logit))
+fp_smart_cusum = np.zeros(len(percentiles_smart_cusum))
+fn_smart_cusum = np.zeros(len(percentiles_smart_cusum))
 num_models = 4
 detection_times_nn = np.zeros((num_repeats,len(percentiles_nn)))
 detection_times_cusum = np.zeros((num_repeats,len(percentiles_cusum)))
-detection_times_logit_cusum = np.zeros((num_repeats,len(percentiles_logit_cusum)))
+detection_times_logit = np.zeros((num_repeats,len(percentiles_logit)))
+detection_times_smart_cusum = np.zeros((num_repeats,len(percentiles_smart_cusum)))
 delay_nn = np.zeros((num_repeats,len(percentiles_nn)))
 delay_cusum = np.zeros((num_repeats,len(percentiles_cusum)))
-delay_logit_cusum = np.zeros((num_repeats,len(percentiles_logit_cusum)))
+delay_logit = np.zeros((num_repeats,len(percentiles_logit)))
+delay_smart_cusum = np.zeros((num_repeats,len(percentiles_smart_cusum)))
 common_detections_count = np.zeros(len(percentiles_nn)) # Count of CPs detected by all three
 fair_delay_nn = np.zeros(len(percentiles_nn))
 fair_delay_cusum = np.zeros(len(percentiles_cusum))
-fair_delay_logit_cusum = np.zeros(len(percentiles_logit_cusum))
+fair_delay_logit = np.zeros(len(percentiles_logit))
+fair_delay_smart_cusum = np.zeros(len(percentiles_smart_cusum))
 
 for p_idx in range(len(percentiles_nn)):
     print(f"p_idx: {p_idx}")
     current_threshold_nn = percentiles_nn[p_idx]
     current_threshold_cusum = percentiles_cusum[p_idx]
-    current_threshold_logit_cusum = percentiles_logit_cusum[p_idx]
+    current_threshold_logit = percentiles_logit[p_idx]
+    current_threshold_smart_cusum = percentiles_smart_cusum[p_idx]
     for i in range(num_repeats):
         dt_nn, _ = detect_change_in_stream_loc_batched(data_alt[i], model, window_length, current_threshold_nn)
         dt_cusum, _ = li_cusum(data_alt[i], window_length, current_threshold_cusum)
-        dt_logit_cusum, _ = detect_change_in_stream_batched_cusum(data_alt[i], model, window_length, current_threshold_logit_cusum)
+        dt_logit_cusum, _ = detect_change_in_stream_batched_cusum(data_alt[i], model, window_length, current_threshold_logit)
+        dt_smart_cusum, _ = smart_li_cusum(data_alt[i], window_length, current_threshold_smart_cusum)
         delay_nn, delay_count_nn, fps_nn, fns_nn = find_detection_delay(stream_length, true_tau_alt[i], dt_nn)
         delay_cusum, delay_count_cusum, fps_cusum, fns_cusum = find_detection_delay(stream_length, true_tau_alt[i], dt_cusum)
-        delay_logit_cusum, delay_count_logit_cusum, fps_logit_cusum, fns_logit_cusum = find_detection_delay(stream_length, true_tau_alt[i], dt_logit_cusum)
+        delay_logit, delay_count_logit, fps_logit, fns_logit = find_detection_delay(stream_length, true_tau_alt[i], dt_logit)
+        delay_smart_cusum, delay_count_smart_cusum, fps_smart_cusum, fns_smart_cusum = find_detection_delay(stream_length, true_tau_alt[i], dt_smart_cusum)
         fp_nn[p_idx] += fps_nn
         fn_nn[p_idx] += fns_nn
         fp_cusum[p_idx] += fps_cusum
         fn_cusum[p_idx] += fns_cusum
-        fp_logit_cusum[p_idx] += fps_logit_cusum
-        fn_logit_cusum[p_idx] += fns_logit_cusum
-        if delay_count_nn > 0 and delay_count_cusum > 0 and delay_count_logit_cusum > 0:
+        fp_logit[p_idx] += fps_logit
+        fn_logit[p_idx] += fns_logit
+        fp_smart_cusum[p_idx] += fps_smart_cusum
+        fn_smart_cusum[p_idx] += fns_smart_cusum
+        if delay_count_nn > 0 and delay_count_cusum > 0 and delay_count_logit > 0 and delay_count_smart_cusum > 0:
             common_detections_count[p_idx] += 1
             fair_delay_nn[p_idx] += delay_nn
             fair_delay_cusum[p_idx] += delay_cusum
-            fair_delay_logit_cusum[p_idx] += delay_logit_cusum
+            fair_delay_logit[p_idx] += delay_logit
+            fair_delay_smart_cusum[p_idx] += delay_smart_cusum
         
     print(f"fair delay nn: {fair_delay_nn[p_idx]}")
     print(f"fair delay cusum: {fair_delay_cusum[p_idx]}")
-    print(f"fair delay logit cusum: {fair_delay_logit_cusum[p_idx]}")
+    print(f"fair delay logit cusum: {fair_delay_logit[p_idx]}")
+    print(f"fair delay smart cusum: {fair_delay_smart_cusum[p_idx]}")
 
     fair_delay_nn[p_idx] /= common_detections_count[p_idx]
     fair_delay_cusum[p_idx] /= common_detections_count[p_idx]
-    fair_delay_logit_cusum[p_idx] /= common_detections_count[p_idx]
+    fair_delay_logit[p_idx] /= common_detections_count[p_idx]
+    fair_delay_smart_cusum[p_idx] /= common_detections_count[p_idx]
     print(f"fair delay nn: {fair_delay_nn[p_idx]}")
     print(f"fair delay cusum: {fair_delay_cusum[p_idx]}")
-    print(f"fair delay logit cusum: {fair_delay_logit_cusum[p_idx]}")
+    print(f"fair delay logit cusum: {fair_delay_logit[p_idx]}")
+    print(f"fair delay smart cusum: {fair_delay_smart_cusum[p_idx]}")
 
 
 print(f"Common detections: {common_detections_count}")
 print(f"Fair delay nn: {fair_delay_nn}")
 print(f"Fair delay cusum: {fair_delay_cusum}")
-print(f"Fair delay logit cusum: {fair_delay_logit_cusum}")
-plt.figure(figsize=(10, 8))
+print(f"Fair delay logit cusum: {fair_delay_logit}")
+print(f"Fair delay smart cusum: {fair_delay_smart_cusum}")
+plt.figure(figsize=(10, 10))
 # Plot 1: Average Detection Delay 
 plt.subplot(2, 2, 1)
 plt.plot(false_alarm_rates, fair_delay_nn, 'o-', linewidth=1.5, markersize=3, color='blue') #nn er blå
 plt.plot(false_alarm_rates, fair_delay_cusum, 'o-', linewidth=1.5, markersize=3, color='red') #cusum er rød
-plt.plot(false_alarm_rates, fair_delay_logit_cusum, 'o-', linewidth=1.5, markersize=3, color='green') #logit cusum er grønn
+plt.plot(false_alarm_rates, fair_delay_logit, 'o-', linewidth=1.5, markersize=3, color='green') #logit cusum er grønn
+plt.plot(false_alarm_rates, fair_delay_smart_cusum, 'o-', linewidth=1.5, markersize=3, color='purple') #smart cusum er lilla
 plt.xlim(0.8,1.0)
-plt.legend(['DD NN', 'DD CUSUM', 'DD Logit CUSUM'])
+plt.legend(['NN', 'CUSUM', 'Logit', 'Smart CUSUM'])
 plt.xlabel('Percentile Threshold Normal')
 plt.ylabel('Average Detection Delay')
 plt.title('Detection Delay vs Threshold')
@@ -192,30 +205,42 @@ plt.grid(True)
 
 # Plot 2: False Positives
 plt.subplot(2, 2, 2)
-plt.plot(false_alarm_rates, fp_nn, 'o-', linewidth=1.5, markersize=3, color='blue')
-plt.plot(false_alarm_rates, fn_nn, 'o-', linewidth=1.5, markersize=3, color='yellow')
-plt.plot(false_alarm_rates, fp_cusum, 'o-', linewidth=1.5, markersize=3, color='red')
-plt.plot(false_alarm_rates, fn_cusum, 'o-', linewidth=1.5, markersize=3, color='orange')
-plt.plot(false_alarm_rates, fp_logit_cusum, 'o-', linewidth=1.5, markersize=3, color='green')
-plt.plot(false_alarm_rates, fn_logit_cusum, 'o-', linewidth=1.5, markersize=3, color='purple')
+plt.plot(false_alarm_rates, fp_nn/num_repeats, 'o-', linewidth=1.5, markersize=3, color='blue')
+plt.plot(false_alarm_rates, fp_cusum/num_repeats, 'o-', linewidth=1.5, markersize=3, color='red')
+plt.plot(false_alarm_rates, fp_logit/num_repeats, 'o-', linewidth=1.5, markersize=3, color='green')
+plt.plot(false_alarm_rates, fp_smart_cusum/num_repeats, 'o-', linewidth=1.5, markersize=3, color='purple')
 plt.xlim(0.8,1.0)
 plt.xlabel('Percentile Threshold')
-plt.ylabel('Number of False Positives')
-plt.title('False Positives vs Threshold')
-plt.legend(['FP NN', 'FN NN', 'FP CUSUM', 'FN CUSUM', 'FP Logit CUSUM', 'FN Logit CUSUM'])
+plt.ylabel('False Positive Rate')
+plt.title('False Positive Rate vs Threshold')
+plt.legend(['NN', 'CUSUM', 'Logit', 'Smart CUSUM'])
+plt.grid(True)
+
+#Plot 3: False Negatives
+plt.subplot(2, 2, 3)
+plt.plot(false_alarm_rates, fn_nn/num_repeats, 'o-', linewidth=1.5, markersize=3, color='blue')
+plt.plot(false_alarm_rates, fn_cusum/num_repeats, 'o-', linewidth=1.5, markersize=3, color='red')
+plt.plot(false_alarm_rates, fn_logit/num_repeats, 'o-', linewidth=1.5, markersize=3, color='green')
+plt.plot(false_alarm_rates, fn_smart_cusum/num_repeats, 'o-', linewidth=1.5, markersize=3, color='purple')
+plt.xlim(0.8,1.0)
+plt.legend(['NN', 'CUSUM', 'Logit', 'Smart CUSUM'])
+plt.xlabel('Percentile Threshold')
+plt.ylabel('False Negative Rate')
+plt.title('False Negative Rate vs Threshold')
 plt.grid(True)
 
 # Plot 3: Average Run Length
-plt.subplot2grid((2, 2), (1, 0), colspan=2)
+plt.subplot(2, 2, 4)
 plt.plot(false_alarm_rates, arl_nn, 'o-', linewidth=1.5, markersize=3, color='blue')
 plt.plot(false_alarm_rates, arl_cusum, 'o-', linewidth=1.5, markersize=3, color='red')
-plt.plot(false_alarm_rates, arl_logit_cusum, 'o-', linewidth=1.5, markersize=3, color='green')
+plt.plot(false_alarm_rates, arl_logit, 'o-', linewidth=1.5, markersize=3, color='green')
+plt.plot(false_alarm_rates, arl_smart_cusum, 'o-', linewidth=1.5, markersize=3, color='purple')
 plt.xlim(0.8,1.0)
 plt.xlabel('Percentile Threshold')
 plt.ylabel('Average Run Length')
 plt.title('ARL vs Threshold')
 plt.grid(True)
-plt.legend(['ARL NN', 'ARL CUSUM', 'ARL Logit CUSUM'])
-plt.savefig(f"Figures/ST_Same_EDD_Cauchy.png")
+plt.legend(['NN', 'CUSUM', 'Logit', 'Smart CUSUM'])
+plt.savefig(f"Figures/ST_Same_EDD_Cauchy_3000run.png")
 plt.tight_layout()
 #plt.show() 

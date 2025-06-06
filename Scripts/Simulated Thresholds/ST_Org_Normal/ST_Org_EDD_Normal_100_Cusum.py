@@ -22,7 +22,7 @@ from sklearn.utils import shuffle
 
 # Parameters
 window_length = 100
-num_repeats = 1000
+num_repeats = 3000
 stream_length = 500
 sigma = 1
 seed = 2023
@@ -205,7 +205,7 @@ for idx in range(len(percentiles_nn)):
     detection_delay_nn[idx] = detection_delay_nn[idx] / delay_counts_nn[idx]
     detection_delay_cusum[idx] = detection_delay_cusum[idx] / delay_counts_cusum[idx]
     detection_delay_logit_cusum[idx] = detection_delay_logit_cusum[idx] / delay_counts_logit_cusum[idx]
-plt.figure(figsize=(10, 8))
+plt.figure(figsize=(10, 10))
 # Plot 1: Average Detection Delay
 plt.subplot(2, 2, 1)
 plt.plot(false_alarm_rates, detection_delay_nn, 'o-', linewidth=1.5, markersize=3, color='blue')
@@ -220,20 +220,29 @@ plt.grid(True)
 
 # Plot 2: False Positives
 plt.subplot(2, 2, 2)
-plt.plot(false_alarm_rates, fps_nn, 'o-', linewidth=1.5, markersize=3, color='blue')
-plt.plot(false_alarm_rates, fns_nn, 'o-', linewidth=1.5, markersize=3, color='yellow')
-plt.plot(false_alarm_rates, fps_cusum, 'o-', linewidth=1.5, markersize=3, color='red')
-plt.plot(false_alarm_rates, fns_cusum, 'o-', linewidth=1.5, markersize=3, color='orange')
-plt.plot(false_alarm_rates, fps_logit_cusum, 'o-', linewidth=1.5, markersize=3, color='green')
-plt.plot(false_alarm_rates, fns_logit_cusum, 'o-', linewidth=1.5, markersize=3, color='purple')
+plt.plot(false_alarm_rates, fp_nn/num_repeats, 'o-', linewidth=1.5, markersize=3, color='blue')
+plt.plot(false_alarm_rates, fp_cusum/num_repeats, 'o-', linewidth=1.5, markersize=3, color='green')
+plt.plot(false_alarm_rates, fp_logit_cusum/num_repeats, 'o-', linewidth=1.5, markersize=3, color='purple')
 plt.xlim(0.8,1.0)
 plt.xlabel('Percentile Threshold')
-plt.ylabel('Number of False Positives')
+plt.ylabel('False Positive Rate')
 plt.title('False Positives vs Threshold')
-plt.legend(['FP NN', 'FN NN', 'FP CUSUM', 'FN CUSUM', 'FP Logit CUSUM', 'FN Logit CUSUM'])
+plt.legend(['NN', 'CUSUM', 'Logit CUSUM'])
 plt.grid(True)
 
-# Plot 3: Average Run Length
+# Plot 3: False Negatives
+plt.subplot(2, 2, 3)
+plt.plot(false_alarm_rates, fn_nn/num_repeats, 'o-', linewidth=1.5, markersize=3, color='blue')
+plt.plot(false_alarm_rates, fn_cusum/num_repeats, 'o-', linewidth=1.5, markersize=3, color='red')
+plt.plot(false_alarm_rates, fn_logit_cusum/num_repeats, 'o-', linewidth=1.5, markersize=3, color='green')
+plt.xlim(0.8,1.0)
+plt.xlabel('Percentile Threshold')
+plt.ylabel('False Negative Rate')
+plt.title('False Negatives vs Threshold')
+plt.legend(['NN', 'CUSUM', 'Logit CUSUM'])
+plt.grid(True)
+
+# Plot 4: Average Run Length
 plt.subplot2grid((2, 2), (1, 0), colspan=2)
 plt.plot(false_alarm_rates, arl, 'o-', linewidth=1.5, markersize=3, color='blue')
 plt.plot(false_alarm_rates, arl_cusum, 'o-', linewidth=1.5, markersize=3, color='red')
@@ -244,6 +253,6 @@ plt.ylabel('Average Run Length')
 plt.title('ARL vs Threshold')
 plt.grid(True)
 plt.legend(['ARL NN', 'ARL CUSUM', 'ARL Logit CUSUM'])
-plt.savefig(f"Figures/ST_Org_EDD_Normal_100_Cusum.png")
+plt.savefig(f"Figures/ST_Org_EDD_Normal_100_Cusum_3000run.png")
 plt.tight_layout()
 #plt.show()

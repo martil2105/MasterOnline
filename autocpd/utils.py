@@ -175,32 +175,6 @@ def MaxCUSUM(x):
     y = np.abs(ComputeCUSUM(x))
     return np.max(y)
 
-def ComputeCUSUM(x):
-    """
-    Compute the CUSUM statistics with O(n) time complexity
-
-    Parameters
-    ----------
-    x : vector
-        the time series
-
-    Returns
-    -------
-    vector
-        a: the CUSUM statistics vector.
-    """
-    n = len(x)
-    mean_left = x[0]
-    mean_right = np.mean(x[1:])
-    a = np.repeat(0.0, n - 1)
-    a[0,] = np.sqrt((n - 1) / n) * (mean_left - mean_right)
-    for i in range(1, n - 1):
-        mean_left = mean_left + (x[i] - mean_left) / (i + 1)
-        mean_right = mean_right + (mean_right - x[i]) / (n - i - 1)
-        a[i,] = np.sqrt((n - i - 1) * (i + 1) / n) * (mean_left - mean_right)
-
-    return a
-
 def detect_change_in_stream(stream, model, window_length,k, threshold ):
 
     num_windows = len(stream) - window_length + 1
@@ -253,21 +227,6 @@ def detect_change_in_stream_batched_cusum(stream, model, window_length, threshol
             break
     return detection_times, np.max(cusum_scores)
 
-def li_cusum(stream, window_length, threshold):
-    num_windows = len(stream) - window_length + 1
-    detection_times = 0
-    max_cusum_scores = []
-    for i in range(num_windows):
-        window_data = stream[i:i+window_length]
-        cusum_stats = ComputeCUSUM(window_data)
-        max_stat = np.max(np.abs(cusum_stats))
-    
-        max_cusum_scores.append(max_stat)
-        
-        if max_stat > threshold:
-            detection_times = i+window_length
-            break
-    return detection_times, np.max(max_cusum_scores)
 
 def GenDataMeanARH(N, n, cp, mu, coef, scale):
     """
@@ -340,4 +299,87 @@ def find_detection_delay(stream_length,change_point, detection_time):
         delay_count = 1
         fn = 1
     return detection_delay, delay_count, fp, fn
+ 
+def li_cusum(stream, window_length, threshold):
+    num_windows = len(stream) - window_length + 1
+    detection_times = 0
+    max_cusum_scores = []
+    for i in range(num_windows):
+        window_data = stream[i:i+window_length]
+        cusum_stats = ComputeCUSUM(window_data)
+        max_stat = np.max(np.abs(cusum_stats))
     
+        max_cusum_scores.append(max_stat)
+        
+        if max_stat > threshold:
+            detection_times = i+window_length
+            break
+    return detection_times, np.max(max_cusum_scores)
+   
+def ComputeCUSUM(x):
+    """
+    Compute the CUSUM statistics with O(n) time complexity
+
+    Parameters
+    ----------
+    x : vector
+        the time series
+
+    Returns
+    -------
+    vector
+        a: the CUSUM statistics vector.
+    """
+    n = len(x)
+    mean_left = x[0]
+    mean_right = np.mean(x[1:])
+    a = np.repeat(0.0, n - 1)
+    a[0,] = np.sqrt((n - 1) / n) * (mean_left - mean_right)
+    for i in range(1, n - 1):
+        mean_left = mean_left + (x[i] - mean_left) / (i + 1)
+        mean_right = mean_right + (mean_right - x[i]) / (n - i - 1)
+        a[i,] = np.sqrt((n - i - 1) * (i + 1) / n) * (mean_left - mean_right)
+
+    return a
+
+def ComputeCUSUMM(x):
+    """
+    Compute the CUSUM statistics with O(n) time complexity
+
+    Parameters
+    ----------
+    x : vector
+        the time series
+
+    Returns
+    -------
+    vector
+        a: the CUSUM statistics vector.
+    """
+    n = len(x)
+    mean_left = 0
+    mean_right = np.mean(x[1:])
+    a = np.repeat(0.0, n - 1)
+    a[0,] = np.sqrt((n - 1) / n) * (mean_left - mean_right)
+    for i in range(1, n - 1):
+        mean_right = mean_right + (mean_right - x[i]) / (n - i - 1)
+        a[i,] = np.sqrt((n - i - 1) * (i + 1) / n) * ( - mean_right)
+
+    return a
+
+
+def smart_li_cusum(stream, window_length, threshold):
+    num_windows = len(stream) - window_length + 1
+    detection_times = 0
+    max_cusum_scores = []
+    for i in range(num_windows):
+        window_data = stream[i:i+window_length]
+        cusum_stats = ComputeCUSUMM(window_data)
+        max_stat = np.max(np.abs(cusum_stats))
+    
+        max_cusum_scores.append(max_stat)
+        
+        if max_stat > threshold:
+            detection_times = i+window_length
+            break
+    return detection_times, np.max(max_cusum_scores)

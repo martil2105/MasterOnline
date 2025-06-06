@@ -42,14 +42,17 @@ data_null = GenDataMeanAR(num_repeats, stream_length, cp=None, mu=(mu_L, mu_L), 
 num_streams = data_null.shape[0]
 max_probabilities = []
 max_probabilities_cusum = []
-max_probabilities_logit_cusum = []
+max_probabilities_logit = []
+max_probabilities_smart_cusum = []
 for i in range(num_streams):
     dt, max_prob = detect_change_in_stream_loc_batched(data_null[i], model, window_length, thresholds[0]) #med urealistisk høy threshold for å finne maksen under null
     max_probabilities.append(max_prob) #legger til en høyeste sannsynlighet
     dt_cusum, max_prob_cusum = li_cusum(data_null[i], window_length, thresholds[0]) #li cusum for alle vinduene med urealistisk høy threshold for å finne maksen under null
     max_probabilities_cusum.append(max_prob_cusum) #legger til i cusum listen
-    dt_logit_cusum, max_prob_logit_cusum = detect_change_in_stream_batched_cusum(data_null[i], model, window_length, thresholds[0]) #logit differanse cusum
-    max_probabilities_logit_cusum.append(max_prob_logit_cusum) #legges i riktig liste
+    dt_logit, max_prob_logit = detect_change_in_stream_batched_cusum(data_null[i], model, window_length, thresholds[0]) #logit differanse cusum
+    max_probabilities_logit.append(max_prob_logit) #legges i riktig liste
+    dt_smart_cusum, max_prob_smart_cusum = smart_li_cusum(data_null[i], window_length, thresholds[0]) #smart cusum
+    max_probabilities_smart_cusum.append(max_prob_smart_cusum) #legges i riktig liste
     if i % 10000 == 0:
         print(f"i: {i}")
 false_alarm_rates = [0.8,0.85, 0.90,0.95,0.99] #forskjellige nivåer
@@ -60,11 +63,17 @@ percentile_90_nn = np.percentile(max_probabilities, 90)
 percentile_95_nn = np.percentile(max_probabilities, 95)
 percentile_99_nn = np.percentile(max_probabilities, 99)
 #logit cusum
-percentile_80_logit_cusum = np.percentile(max_probabilities_logit_cusum, 80)
-percentile_85_logit_cusum = np.percentile(max_probabilities_logit_cusum, 85)
-percentile_90_logit_cusum = np.percentile(max_probabilities_logit_cusum, 90)
-percentile_95_logit_cusum = np.percentile(max_probabilities_logit_cusum, 95)
-percentile_99_logit_cusum = np.percentile(max_probabilities_logit_cusum, 99)
+percentile_80_logit = np.percentile(max_probabilities_logit, 80)
+percentile_85_logit = np.percentile(max_probabilities_logit, 85)
+percentile_90_logit = np.percentile(max_probabilities_logit, 90)
+percentile_95_logit = np.percentile(max_probabilities_logit, 95)
+percentile_99_logit = np.percentile(max_probabilities_logit, 99)
+#smart cusum
+percentile_80_smart_cusum = np.percentile(max_probabilities_smart_cusum, 80)
+percentile_85_smart_cusum = np.percentile(max_probabilities_smart_cusum, 85)
+percentile_90_smart_cusum = np.percentile(max_probabilities_smart_cusum, 90)
+percentile_95_smart_cusum = np.percentile(max_probabilities_smart_cusum, 95)
+percentile_99_smart_cusum = np.percentile(max_probabilities_smart_cusum, 99)
 #cusum
 percentile_80_cusum = np.percentile(max_probabilities_cusum, 80)
 percentile_85_cusum = np.percentile(max_probabilities_cusum, 85)
@@ -74,10 +83,11 @@ percentile_99_cusum = np.percentile(max_probabilities_cusum, 99)
 print(f"Repeats: {num_streams}, 95th percentile: {percentile_95_nn}")
 percentiles_nn = [percentile_80_nn,percentile_85_nn,percentile_90_nn, percentile_95_nn, percentile_99_nn] #percentiler slik at vi kan loope gjennom dem
 percentiles_cusum = [percentile_80_cusum,percentile_85_cusum,percentile_90_cusum, percentile_95_cusum, percentile_99_cusum]
-percentiles_logit_cusum = [percentile_80_logit_cusum,percentile_85_logit_cusum,percentile_90_logit_cusum, percentile_95_logit_cusum, percentile_99_logit_cusum]
+percentiles_logit = [percentile_80_logit,percentile_85_logit,percentile_90_logit, percentile_95_logit, percentile_99_logit]
+percentiles_smart_cusum = [percentile_80_smart_cusum,percentile_85_smart_cusum,percentile_90_smart_cusum, percentile_95_smart_cusum, percentile_99_smart_cusum]
 output_dir = Path("datasets")
-threshold_filepath = output_dir / "normal_thresholds_rho_100.npz"
-np.savez_compressed(threshold_filepath, percentiles_nn=percentiles_nn, percentiles_cusum=percentiles_cusum, percentiles_logit_cusum=percentiles_logit_cusum)
+threshold_filepath = output_dir / "thresholds_rho_100.npz"
+np.savez_compressed(threshold_filepath, percentiles_nn=percentiles_nn, percentiles_cusum=percentiles_cusum, percentiles_logit=percentiles_logit, percentiles_smart_cusum=percentiles_smart_cusum)
 print(f"Thresholds saved to: {threshold_filepath}")
 loaded_thresholds = np.load(threshold_filepath)
 print(loaded_thresholds.keys())
